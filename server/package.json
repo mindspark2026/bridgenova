@@ -6,19 +6,16 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "node --watch src/index.js"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@colyseus/schema": "^2.0.35",
-    "@colyseus/ws-transport": "^0.15.7",
-    "colyseus": "^0.15.42",
-    "cors": "^2.8.5",
-    "express": "^4.19.2"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.4"
+    "@colyseus/core": "0.17.43",
+    "@colyseus/schema": "4.0.24",
+    "@colyseus/ws-transport": "0.17.13",
+    "cors": "2.8.5",
+    "express": "5.2.1"
   }
 }
