@@ -2,7 +2,7 @@ const path = require("path");
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
-const { Server, matchMaker } = require("colyseus");
+const { Server, matchMaker } = require("@colyseus/core");
 const { WebSocketTransport } = require("@colyseus/ws-transport");
 
 const { BridgeRaceRoom } = require("./rooms/BridgeRaceRoom");
@@ -35,8 +35,16 @@ app.get("/api/rooms/by-code/:code", async (req, res) => {
   }
 });
 
-// Fallback: any unknown route serves the SPA shell so client-side routing works.
-app.get("*", (_req, res) => res.sendFile(path.join(CLIENT_DIR, "index.html")));
+// Fallback: any unknown GET route serves the SPA shell so client-side
+// routing works. Written as a path-less middleware (not app.get("*", ...))
+// because Express 5's stricter path-to-regexp no longer accepts a bare "*"
+// as a route pattern - this is the Express-5-safe equivalent.
+app.use((req, res, next) => {
+  if (req.method !== "GET") return next();
+  res.sendFile(path.join(CLIENT_DIR, "index.html"), (err) => {
+    if (err) next(err);
+  });
+});
 
 const httpServer = http.createServer(app);
 
@@ -51,4 +59,8 @@ gameServer.define("bridge_race", BridgeRaceRoom);
 
 gameServer.listen(PORT).then(() => {
   console.log(`Bridge Race server listening on ws://localhost:${PORT}`);
+});
+
+process.on("SIGTERM", () => {
+  gameServer.gracefullyShutdown().then(() => process.exit(0));
 });
