@@ -1,4 +1,4 @@
-const { Schema, type, MapSchema } = require("@colyseus/schema");
+const { Schema, MapSchema, defineTypes } = require("@colyseus/schema");
 const { Player } = require("./Player");
 
 /**
@@ -13,26 +13,28 @@ class RoomState extends Schema {
     super();
     this.players = new MapSchema();
     this.phase = "waiting";
-    this.roomCode = "";      // shareable 5-char code for private rooms
+    this.roomCode = ""; // shareable 5-char code for private rooms
     this.isPrivate = false;
     this.hostId = "";
     this.maxPlayers = 6;
     this.minPlayers = 2;
     this.countdownMs = 0;
-    this.raceStartAt = 0;    // server timestamp (ms) when phase became "racing"
+    this.raceStartAt = 0; // server timestamp (ms) when phase became "racing"
     this.trackLength = 1000; // arbitrary progress units
   }
 }
 
-type({ map: Player })(RoomState.prototype, "players");
-type("string")(RoomState.prototype, "phase");
-type("string")(RoomState.prototype, "roomCode");
-type("boolean")(RoomState.prototype, "isPrivate");
-type("string")(RoomState.prototype, "hostId");
-type("uint8")(RoomState.prototype, "maxPlayers");
-type("uint8")(RoomState.prototype, "minPlayers");
-type("number")(RoomState.prototype, "countdownMs");
-type("number")(RoomState.prototype, "raceStartAt");
-type("number")(RoomState.prototype, "trackLength");
+defineTypes(RoomState, {
+  players: { map: Player },
+  phase: "string",
+  roomCode: "string",
+  isPrivate: "boolean",
+  hostId: "string",
+  maxPlayers: "uint8",
+  minPlayers: "uint8",
+  countdownMs: "number",
+  raceStartAt: "number",
+  trackLength: "number",
+});
 
 module.exports = { RoomState };
