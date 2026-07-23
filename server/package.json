@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@colyseus/schema": "^2.0.35",
-    "@colyseus/ws-transport": "^0.15.19",
+    "@colyseus/ws-transport": "^0.15.7",
     "colyseus": "^0.15.42",
     "cors": "^2.8.5",
     "express": "^4.19.2"
