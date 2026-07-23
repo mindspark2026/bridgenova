@@ -1,18 +1,18 @@
-const { Room } = require("colyseus");
+const { Room } = require("@colyseus/core");
 const { RoomState } = require("./schema/RoomState");
 const { Player } = require("./schema/Player");
 
 // ---- Gameplay tuning constants -------------------------------------------
 const MAX_PLAYERS = 6;
 const MIN_PLAYERS_TO_START = 2;
-const TRACK_LENGTH = 1000;           // progress units from start to finish line
-const PLANK_LENGTH = 45;             // how far one placed plank extends the bridge
-const PLANK_COOLDOWN_MS = 130;       // server-enforced min time between plank placements (anti-spam)
-const MOVE_SPEED_PER_SEC = 140;      // progress units/sec while running on a built bridge
+const TRACK_LENGTH = 1000; // progress units from start to finish line
+const PLANK_LENGTH = 45; // how far one placed plank extends the bridge
+const PLANK_COOLDOWN_MS = 130; // server-enforced min time between plank placements (anti-spam)
+const MOVE_SPEED_PER_SEC = 140; // progress units/sec while running on a built bridge
 const COUNTDOWN_MS = 3000;
 const RECONNECTION_GRACE_SEC = 30;
 const MATCH_TIMEOUT_MS = 3 * 60 * 1000; // safety cap so a race can never hang forever
-const TICK_RATE_MS = 1000 / 20;      // 20 authoritative ticks/sec
+const TICK_RATE_MS = 1000 / 20; // 20 authoritative ticks/sec
 
 function randomRoomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars (0/O, 1/I)
@@ -22,9 +22,9 @@ function randomRoomCode() {
 }
 
 class BridgeRaceRoom extends Room {
-  onCreate(options) {
+  onCreate(options = {}) {
     this.maxClients = MAX_PLAYERS;
-    this.setState(new RoomState());
+    this.state = new RoomState();
 
     this.state.maxPlayers = MAX_PLAYERS;
     this.state.minPlayers = MIN_PLAYERS_TO_START;
@@ -48,15 +48,17 @@ class BridgeRaceRoom extends Room {
     // Authoritative simulation loop.
     this.setSimulationInterval((dt) => this.update(dt), TICK_RATE_MS);
 
-    console.log(`[BridgeRaceRoom] created ${this.roomId} (private=${this.state.isPrivate}, code=${this.state.roomCode})`);
+    console.log(
+      `[BridgeRaceRoom] created ${this.roomId} (private=${this.state.isPrivate}, code=${this.state.roomCode})`
+    );
   }
 
-  onAuth(client, options) {
+  onAuth(_client, _options) {
     // No account system required - guest play is always allowed.
     return true;
   }
 
-  onJoin(client, options) {
+  onJoin(client, options = {}) {
     if (this.state.phase === "racing" || this.state.phase === "countdown") {
       // Mid-match joins aren't allowed (only reconnections, handled in onLeave/allowReconnection).
       throw new Error("Match already in progress");
@@ -73,7 +75,9 @@ class BridgeRaceRoom extends Room {
       this.state.hostId = client.sessionId;
     }
 
-    console.log(`[BridgeRaceRoom] ${player.name} joined ${this.roomId} (${this.state.players.size}/${MAX_PLAYERS})`);
+    console.log(
+      `[BridgeRaceRoom] ${player.name} joined ${this.roomId} (${this.state.players.size}/${MAX_PLAYERS})`
+    );
 
     // Auto-start the instant the room fills up.
     if (this.state.players.size >= MAX_PLAYERS && this.state.phase === "waiting") {
