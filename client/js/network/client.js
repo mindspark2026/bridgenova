@@ -43,16 +43,53 @@ class NetworkClient {
     return this.room;
   }
 
+  // Best-effort resume after a hard page refresh (a fresh page load has no
+  // in-memory Room object, so the SDK's automatic mid-session reconnection
+  // never gets a chance to run - this covers that gap using the token we
+  // cached in sessionStorage from the previous connection).
+  async tryResumeSession() {
+    const token = sessionStorage.getItem("bridgeRace.reconnectionToken");
+    if (!token) return null;
+
+    try {
+      this.room = await this.client.reconnect(token);
+      this._bindRoomEvents();
+      return this.room;
+    } catch (e) {
+      sessionStorage.removeItem("bridgeRace.reconnectionToken");
+      sessionStorage.removeItem("bridgeRace.roomId");
+      return null;
+    }
+  }
+
   _bindRoomEvents() {
     if (!this.room) return;
+
     // Persist the reconnection token so a hard refresh mid-match can still
-    // attempt to rejoin (best-effort; SPA navigation never needs this since
-    // the socket itself stays alive).
+    // attempt to rejoin via tryResumeSession() above.
     sessionStorage.setItem("bridgeRace.reconnectionToken", this.room.reconnectionToken);
     sessionStorage.setItem("bridgeRace.roomId", this.room.roomId);
 
     this.room.onStateChange((state) => this.emit("state", state));
-    this.room.onLeave((code) => this.emit("leave", code));
+
+    // Abnormal disconnect - the SDK is already retrying automatically in
+    // the background; this is purely a UI hook (e.g. "Reconnecting..." banner).
+    this.room.onDrop((code, reason) => this.emit("drop", { code, reason }));
+
+    // Reconnection (within the same page session) succeeded.
+    this.room.onReconnect(() => {
+      // Reconnecting gives us a new token - keep sessionStorage in sync.
+      sessionStorage.setItem("bridgeRace.reconnectionToken", this.room.reconnectionToken);
+      this.emit("reconnect");
+    });
+
+    // Permanent leave - either a consented leave, or reconnection failed/expired.
+    this.room.onLeave((code, reason) => {
+      sessionStorage.removeItem("bridgeRace.reconnectionToken");
+      sessionStorage.removeItem("bridgeRace.roomId");
+      this.emit("leave", code);
+    });
+
     this.room.onError((code, message) => this.emit("error", { code, message }));
   }
 
@@ -68,8 +105,8 @@ class NetworkClient {
     this.room?.send("set_name", name);
   }
 
-  leaveRoom(consented = true) {
-    this.room?.leave(consented);
+  leaveRoom() {
+    this.room?.leave(true);
     this.room = null;
     sessionStorage.removeItem("bridgeRace.reconnectionToken");
     sessionStorage.removeItem("bridgeRace.roomId");
