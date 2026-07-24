@@ -71,9 +71,28 @@ network.on("error", ({ message }) => {
   toast(message || "Connection error.");
 });
 
+network.on("drop", () => {
+  if (currentScreen === "game" || currentScreen === "waiting") {
+    toast("Connection lost - reconnecting…");
+  }
+});
+
+network.on("reconnect", () => {
+  if (currentScreen === "game" || currentScreen === "waiting") {
+    toast("Reconnected!");
+  }
+});
+
 network.on("leave", (code) => {
-  // code 4000+ are custom/app-level closes; anything unexpected gets surfaced.
-  if (code && code >= 4000 && currentScreen !== "lobby" && currentScreen !== "home") {
+  const FAILED_TO_RECONNECT = window.Colyseus?.CloseCode?.FAILED_TO_RECONNECT ?? 4003;
+  if (code === FAILED_TO_RECONNECT) {
+    toast("Could not reconnect to the match.");
+    showScreen("lobby");
+    return;
+  }
+  // 4000+ (besides a normal consented leave already handled by the
+  // screen that triggered it) are unexpected app/server-level closes.
+  if (code && code >= 4001 && currentScreen !== "lobby" && currentScreen !== "home") {
     toast("Disconnected from the match.");
   }
 });
@@ -88,4 +107,19 @@ window.addEventListener(
   { once: true }
 );
 
-showScreen("home");
+// On a hard page refresh mid-match, try to resume the previous session
+// before falling back to the home screen.
+network.tryResumeSession().then((room) => {
+  if (!room) {
+    showScreen("home");
+    return;
+  }
+  const state = room.state;
+  if (state.phase === "racing" || state.phase === "countdown") {
+    showScreen("game");
+  } else if (state.phase === "waiting") {
+    showScreen("waiting");
+  } else {
+    showScreen("home");
+  }
+});
