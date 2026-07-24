@@ -60,7 +60,7 @@ class BridgeRaceRoom extends Room {
 
   onJoin(client, options = {}) {
     if (this.state.phase === "racing" || this.state.phase === "countdown") {
-      // Mid-match joins aren't allowed (only reconnections, handled in onLeave/allowReconnection).
+      // Mid-match joins aren't allowed (only reconnections, handled via onDrop/onReconnect).
       throw new Error("Match already in progress");
     }
 
@@ -85,39 +85,61 @@ class BridgeRaceRoom extends Room {
     }
   }
 
-  async onLeave(client, consented) {
+  // --- Colyseus 0.17 reconnection lifecycle ---------------------------
+  // onDrop()      -> fires on an ABNORMAL disconnect (dropped socket).
+  //                  Ask the framework to hold the seat open for a while.
+  // onReconnect() -> fires if the same client reconnects within that window.
+  // onLeave()     -> fires on a graceful/explicit leave, OR once the
+  //                  reconnection window from onDrop() expires. This is
+  //                  always the final "player is really gone" cleanup.
+  onDrop(client, _code) {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+
+    if (this.state.phase !== "racing") {
+      // No grace period pre-match/post-match - onLeave() finalizes the
+      // removal right away since we don't request reconnection here.
+      return;
+    }
+
+    // Mid-match: keep their bridge/progress, mark disconnected, and give
+    // them 30 seconds to come back before onLeave() removes them for good.
+    player.connected = false;
+    this.allowReconnection(client, RECONNECTION_GRACE_SEC);
+  }
+
+  onReconnect(client) {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+    player.connected = true;
+    console.log(`[BridgeRaceRoom] ${player.name} reconnected to ${this.roomId}`);
+  }
+
+  onLeave(client, _code) {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
     const wasHost = player.isHost;
-
-    if (this.state.phase === "waiting" || this.state.phase === "countdown") {
-      // Pre-match: free the slot immediately, no reconnection window.
-      this.state.players.delete(client.sessionId);
-      this._lastPlankAt.delete(client.sessionId);
-      this.reassignHostIfNeeded(wasHost);
-      return;
-    }
-
-    // Mid-match disconnect: keep their bridge/progress, mark disconnected,
-    // and give them 30 seconds to reconnect before removing them for good.
-    player.connected = false;
-    try {
-      if (!consented) {
-        await this.allowReconnection(client, RECONNECTION_GRACE_SEC);
-        // Client came back in time.
-        player.connected = true;
-        console.log(`[BridgeRaceRoom] ${player.name} reconnected to ${this.roomId}`);
-        return;
-      }
-    } catch (e) {
-      // Grace period expired (or client left on purpose) - remove them from the race.
-    }
-
     this.state.players.delete(client.sessionId);
     this._lastPlankAt.delete(client.sessionId);
     this.reassignHostIfNeeded(wasHost);
-    this.checkForRaceEnd();
+
+    if (this.state.phase === "countdown" && this.state.players.size < MIN_PLAYERS_TO_START) {
+      this.cancelCountdown();
+    }
+
+    if (this.state.phase === "racing") {
+      this.checkForRaceEnd();
+    }
+  }
+
+  cancelCountdown() {
+    if (this._countdownTimeoutHandle) {
+      this._countdownTimeoutHandle.clear();
+      this._countdownTimeoutHandle = null;
+    }
+    this.state.phase = "waiting";
+    this.state.countdownMs = 0;
   }
 
   reassignHostIfNeeded(wasHost) {
@@ -150,7 +172,7 @@ class BridgeRaceRoom extends Room {
   beginCountdown() {
     this.state.phase = "countdown";
     this.state.countdownMs = COUNTDOWN_MS;
-    this.clock.setTimeout(() => this.beginRace(), COUNTDOWN_MS);
+    this._countdownTimeoutHandle = this.clock.setTimeout(() => this.beginRace(), COUNTDOWN_MS);
   }
 
   beginRace() {
